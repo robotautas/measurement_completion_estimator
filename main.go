@@ -34,6 +34,7 @@ func saveToRedis(completionTime string) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("%v - Saving completion estimation at %v\n", time.Now(), completionTime)
 }
 
 func main() {
