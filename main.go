@@ -30,11 +30,11 @@ func newPool() *redis.Pool {
 func saveToRedis(completionTime string) {
 	client := pool.Get()
 	defer client.Close()
-	_, err := client.Do("SET", "completionTime", completionTime)
+	_, err := client.Do("SET", "etc", completionTime)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%v - Saving completion estimation at %v\n", time.Now(), completionTime)
+	fmt.Printf("%v - Saving ETC at %v\n", time.Now(), completionTime)
 }
 
 func main() {
@@ -57,7 +57,7 @@ func getCompletionTime() string {
 	html, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return "Err: can't read body"
+		return "Err: can't read response body"
 	}
 
 	//get <pre> element
@@ -71,6 +71,7 @@ func getCompletionTime() string {
 		// split line by whitespace
 		lineValues := strings.Fields(line)
 		if len(lineValues) > 0 && lineValues[0] == "_" {
+
 			// get Runs and Comp columns values
 			runsValue, err := strconv.Atoi(lineValues[7])
 			if err != nil {
@@ -80,7 +81,8 @@ func getCompletionTime() string {
 			if err != nil {
 				return "Comp Value Error"
 			}
-			fmt.Printf("%v   %v\n", runsValue, compValue)
+
+			// fmt.Printf("%v   %v\n", runsValue, compValue)
 
 			// if all runs are not complete ...
 			if runsValue != compValue {
@@ -89,6 +91,10 @@ func getCompletionTime() string {
 				// fmt.Printf("secs: %v\n", seconds)
 			}
 		}
+	}
+
+	if totalSeconds == 0 {
+		return "Complete"
 	}
 
 	timeNow := time.Now()
