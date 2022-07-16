@@ -7,40 +7,21 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gomodule/redigo/redis"
 )
 
-var pool = newPool()
-
-func newPool() *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:   80,
-		MaxActive: 12000,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", ":6379")
-			if err != nil {
-				panic(err.Error())
-			}
-			return c, err
-		},
-	}
-}
-
-func saveToRedis(completionTime string) {
-	client := pool.Get()
-	defer client.Close()
-	_, err := client.Do("SET", "etc", completionTime)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("%v - Saving ETC at %v\n", time.Now(), completionTime)
-}
+const runDuration int = 198
+const postMeasurementRuntime int = 25
 
 func main() {
 	for {
-		saveToRedis(getCompletionTime())
-		time.Sleep(time.Minute * 6)
+		start := time.Now()
+		completionTime := getCompletionTime()
+		preparedValues := prepareValues(completionTime)
+		fmt.Printf("prepared values : %v\n", preparedValues)
+		writeLineToDatabase(con, preparedValues)
+		fmt.Printf("%v: ETC -> %v, ETL -> %v\n", time.Now(), preparedValues["etc"], preparedValues["etl"])
+		fmt.Println("runtime: ", time.Since(start))
+		time.Sleep(time.Second * time.Duration(runDuration))
 	}
 }
 
@@ -67,12 +48,13 @@ func getCompletionTime() string {
 
 	var totalSeconds int64 = 0
 
+	dataLineCounter := 0
+
 	for _, line := range lines {
 		// split line by whitespace
 		lineValues := strings.Fields(line)
 		if len(lineValues) > 0 && lineValues[0] == "_" {
-
-			// get Runs and Comp columns values
+			dataLineCounter++
 			runsValue, err := strconv.Atoi(lineValues[7])
 			if err != nil {
 				return "Runs Value Error"
@@ -81,14 +63,10 @@ func getCompletionTime() string {
 			if err != nil {
 				return "Comp Value Error"
 			}
-
-			// fmt.Printf("%v   %v\n", runsValue, compValue)
-
 			// if all runs are not complete ...
 			if runsValue != compValue {
-				seconds := int64((runsValue-compValue)*180 + 20)
+				seconds := int64((runsValue - compValue) * runDuration)
 				totalSeconds += seconds
-				// fmt.Printf("secs: %v\n", seconds)
 			}
 		}
 	}
@@ -97,9 +75,35 @@ func getCompletionTime() string {
 		return "Complete"
 	}
 
+	// Post measurement time, when the wheel turns to initial position.
+	afterTime := dataLineCounter * postMeasurementRuntime
+	totalSeconds += int64(afterTime)
+
 	timeNow := time.Now()
 	timeComplete := timeNow.Add(time.Second * time.Duration(totalSeconds))
-	returnString := timeComplete.Format("2006-01-02 15:04:05")
+	etc := timeComplete.Format("2006-01-02 15:04:05")
 
-	return returnString
+	dur := time.Duration(time.Second * time.Duration(totalSeconds)).String()
+	var etl string
+
+	if strings.Contains(dur, "m") {
+		etl = fmt.Sprintf("%vm", strings.Split(dur, "m")[0])
+	} else {
+		etl = dur
+	}
+
+	return etc + "|" + etl
+}
+
+func prepareValues(s string) map[string]interface{} {
+	preparedValues := make(map[string]interface{})
+	if strings.Contains(s, "|") {
+		splitted := strings.Split(s, "|")
+		preparedValues["etc"] = splitted[0]
+		preparedValues["etl"] = splitted[1]
+	} else {
+		preparedValues["etc"] = s
+		preparedValues["etl"] = s
+	}
+	return preparedValues
 }
