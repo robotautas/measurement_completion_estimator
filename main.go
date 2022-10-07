@@ -14,13 +14,10 @@ const postMeasurementRuntime int = 25
 
 func main() {
 	for {
-		start := time.Now()
 		completionTime := getCompletionTime()
 		preparedValues := prepareValues(completionTime)
-		fmt.Printf("prepared values : %v\n", preparedValues)
 		writeLineToDatabase(con, preparedValues)
 		fmt.Printf("%v: ETC -> %v, ETL -> %v\n", time.Now(), preparedValues["etc"], preparedValues["etl"])
-		fmt.Println("runtime: ", time.Since(start))
 		time.Sleep(time.Second * time.Duration(runDuration))
 	}
 }
@@ -50,16 +47,18 @@ func getCompletionTime() string {
 
 	dataLineCounter := 0
 
+	runsIndex, compIndex := getRunsCompIndex(lines)
+
 	for _, line := range lines {
 		// split line by whitespace
 		lineValues := strings.Fields(line)
 		if len(lineValues) > 0 && lineValues[0] == "_" {
 			dataLineCounter++
-			runsValue, err := strconv.Atoi(lineValues[7])
+			runsValue, err := strconv.Atoi(lineValues[runsIndex])
 			if err != nil {
 				return "Runs Value Error"
 			}
-			compValue, err := strconv.Atoi(lineValues[8])
+			compValue, err := strconv.Atoi(lineValues[compIndex])
 			if err != nil {
 				return "Comp Value Error"
 			}
@@ -93,6 +92,36 @@ func getCompletionTime() string {
 	}
 
 	return etc + "|" + etl
+}
+
+// get Runs and Comp columns indexes dinamically
+func getRunsCompIndex(lines []string) (int, int) {
+	var columnNames []string
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "E") {
+			columnNames = strings.Fields(line)
+			break
+		}
+	}
+
+	var runsIndex int
+	var compIndex int
+	var doubleNames int
+
+	for i, name := range columnNames {
+		// check for two-word names ("Sample Name" and "Sample Name2")
+		if name == "Sample" {
+			doubleNames++
+		}
+		if name == "Runs" {
+			runsIndex = i - doubleNames
+		} else if name == "Comp" {
+			compIndex = i - doubleNames
+		}
+	}
+
+	return runsIndex, compIndex
 }
 
 func prepareValues(s string) map[string]interface{} {
