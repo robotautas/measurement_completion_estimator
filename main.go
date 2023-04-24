@@ -38,6 +38,11 @@ func getCompletionTime() string {
 		return "Err: can't read response body"
 	}
 
+	// in case server is down..
+	if !strings.Contains(string(html), "<pre>") {
+		return "No data!"
+	}
+
 	//get <pre> element
 	pre := strings.Split(string(html), "<pre>")[1]
 	pre = strings.Split(pre, "</pre>")[0]
