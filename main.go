@@ -9,25 +9,60 @@ import (
 	"time"
 )
 
-const runDuration int = 198
+// const runDuration int = 198 replacen by a dynamic function
 const postMeasurementRuntime int = 25
 
 func main() {
 	for {
-		completionTime := getCompletionTime()
+		completionTime, sleepTime := getCompletionTime()
 		preparedValues := prepareValues(completionTime)
 		writeLineToDatabase(con, preparedValues)
 		fmt.Printf("%v: ETC -> %v, ETL -> %v\n", time.Now(), preparedValues["etc"], preparedValues["etl"])
-		time.Sleep(time.Second * time.Duration(runDuration))
+		time.Sleep(time.Second * time.Duration(sleepTime))
 	}
 }
 
-func getCompletionTime() string {
+func getRunDuration() (int, error) {
+	url := "http://172.16.176.40/csquery.php?act=query&list=DOSEstlog"
+	resp, err := http.Get(url)
+	if err != nil {
+		return -1, fmt.Errorf("error fetching URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return -1, fmt.Errorf("error: status code %d", resp.StatusCode)
+	}
+
+	html, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return -1, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	lines := strings.Split(string(html), "CntDwnC")
+	cyclesStr := strings.Fields(lines[1])
+	cycles, err := strconv.Atoi(cyclesStr[0])
+
+	if err != nil {
+		return -1, fmt.Errorf("error converting cycles to int: %w", err)
+	}
+
+	seconds := (cycles + 100) / 10
+	return seconds, nil
+}
+
+func getCompletionTime() (string, int) {
+	runDuration, err := getRunDuration()
+	if err != nil {
+		return "failed to read run duration", 300
+	}
+
 	url := "http://172.16.176.40/csquery.php?act=dose&list=item"
 	resp, err := http.Get(url)
 
 	if err != nil {
-		return "Error: bad response"
+		return "Error: bad response", runDuration
 	}
 
 	defer resp.Body.Close()
@@ -35,12 +70,12 @@ func getCompletionTime() string {
 	html, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return "Err: can't read response body"
+		return "Err: can't read response body", runDuration
 	}
 
 	// in case server is down..
 	if !strings.Contains(string(html), "<pre>") {
-		return "No data!"
+		return "No data!", runDuration
 	}
 
 	//get <pre> element
@@ -61,11 +96,11 @@ func getCompletionTime() string {
 			dataLineCounter++
 			runsValue, err := strconv.Atoi(lineValues[runsIndex])
 			if err != nil {
-				return "Runs Value Error"
+				return "Runs Value Error", runDuration
 			}
 			compValue, err := strconv.Atoi(lineValues[compIndex])
 			if err != nil {
-				return "Comp Value Error"
+				return "Comp Value Error", runDuration
 			}
 			// if all runs are not complete ...
 			if runsValue != compValue {
@@ -76,7 +111,7 @@ func getCompletionTime() string {
 	}
 
 	if totalSeconds == 0 {
-		return "Complete"
+		return "Complete", runDuration
 	}
 
 	// Post measurement time, when the wheel turns to initial position.
@@ -96,7 +131,7 @@ func getCompletionTime() string {
 		etl = dur
 	}
 
-	return etc + "|" + etl
+	return etc + "|" + etl, runDuration
 }
 
 // get Runs and Comp columns indexes dinamically
