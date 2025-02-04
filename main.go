@@ -48,7 +48,7 @@ func getRunDuration() (int, error) {
 		return -1, fmt.Errorf("error converting cycles to int: %w", err)
 	}
 
-	seconds := (cycles + 100) / 10
+	seconds := (cycles + 100) * 115 / 1000
 	return seconds, nil
 }
 
